@@ -1,7 +1,13 @@
+import os
+import subprocess
+import sys
+import tempfile
 import tkinter as tk
 
 import cv2
+import pygame
 from PIL import Image, ImageTk
+from imageio_ffmpeg import get_ffmpeg_exe
 
 from resources import VIDEO_PATH
 
@@ -20,13 +26,23 @@ ROAST_LINES = (
 )
 
 
-def draw_mute_icon(canvas):
-    # just a speaker shape with a line through it, purely for looks,
-    # nothing is bound to clicks on it
-    canvas.create_polygon(6, 18, 16, 18, 27, 8, 27, 34, 16, 24, 6, 24,
-                           fill="white", outline="white")
-    canvas.create_line(4, 4, 36, 36, fill="#e53935", width=4)
-    canvas.create_line(4, 36, 36, 4, fill="#e53935", width=4)
+def extract_audio(video_path):
+    # pulls the audio track out to a temp wav using the ffmpeg binary
+    # that imageio-ffmpeg ships with, so we don't need a system install
+    # of ffmpeg on whatever PC this ends up running on
+    ffmpeg_exe = get_ffmpeg_exe()
+    tmp_wav = os.path.join(tempfile.gettempdir(), "gta_sa_intro_audio.wav")
+
+    cmd = [
+        ffmpeg_exe, "-y", "-i", video_path,
+        "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
+        tmp_wav,
+    ]
+
+    creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    creationflags=creationflags)
+    return tmp_wav
 
 
 def run_player():
@@ -41,19 +57,33 @@ def run_player():
     video_label = tk.Label(root, bg="black", bd=0, highlightthickness=0)
     video_label.place(x=0, y=0, width=screen_w, height=screen_h)
 
-    mute_canvas = tk.Canvas(root, width=40, height=40, bg="black", highlightthickness=0)
-    mute_canvas.place(x=24, y=24)
-    draw_mute_icon(mute_canvas)
-
     cap = cv2.VideoCapture(VIDEO_PATH)
     fps = cap.get(cv2.CAP_PROP_FPS)
     if not fps or fps <= 1:
         fps = 30
     delay = int(1000 / fps)
 
+    # best-effort audio - if anything about this fails (no audio device,
+    # extraction hiccup, whatever) just fall back to playing silently
+    # instead of crashing the whole thing
+    wav_path = None
+    try:
+        pygame.mixer.init()
+        wav_path = extract_audio(VIDEO_PATH)
+        pygame.mixer.music.load(wav_path)
+    except Exception as e:
+        print("Audio setup failed, playing without sound:", e)
+        wav_path = None
+
+    def stop_audio():
+        try:
+            pygame.mixer.music.stop()
+        except Exception:
+            pass
+
     def show_roast():
         video_label.place_forget()
-        mute_canvas.place_forget()
+        stop_audio()
 
         roast_label = tk.Label(
             root,
@@ -65,12 +95,23 @@ def run_player():
         )
         roast_label.place(relx=0.5, rely=0.5, anchor="center")
 
+    first_frame = True
+
     def show_frame():
+        nonlocal first_frame
         ok, frame = cap.read()
         if not ok:
             cap.release()
             show_roast()
             return
+
+        if first_frame:
+            first_frame = False
+            if wav_path:
+                try:
+                    pygame.mixer.music.play()
+                except Exception as e:
+                    print("Couldn't start audio playback:", e)
 
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(frame).resize((screen_w, screen_h))
@@ -83,6 +124,7 @@ def run_player():
 
     def on_key(event):
         if event.keysym == "Escape":
+            stop_audio()
             root.destroy()
         return "break"
 

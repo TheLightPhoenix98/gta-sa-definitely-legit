@@ -171,12 +171,20 @@ class LicensePage(BasePage):
     def __init__(self, parent, controller):
         super().__init__(parent, controller, "License Agreement")
 
-        box = tk.Text(self.content, wrap="word", height=14, width=62,
+        text_frame = tk.Frame(self.content, bg=BG_DARK)
+        text_frame.pack(pady=(0, 8))
+
+        scrollbar = tk.Scrollbar(text_frame)
+        scrollbar.pack(side="right", fill="y")
+
+        box = tk.Text(text_frame, wrap="word", height=14, width=60,
                        bg="#0f0f0f", fg=TEXT_LIGHT, relief="flat",
-                       font=("Consolas", 9))
+                       font=("Consolas", 9), yscrollcommand=scrollbar.set)
         box.insert("1.0", LICENSE_TEXT)
         box.config(state="disabled")
-        box.pack(pady=(0, 8))
+        box.pack(side="left")
+
+        scrollbar.config(command=box.yview)
 
         self.agree_var = tk.BooleanVar(value=False)
         check = tk.Checkbutton(
