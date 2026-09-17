@@ -1,6 +1,4 @@
 import os
-import random
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -11,8 +9,6 @@ import cv2
 import pygame
 from PIL import Image, ImageTk
 from imageio_ffmpeg import get_ffmpeg_exe
-
-from resources import VIDEO_PATH, ICON_PATH
 
 ROAST_LINES = (
     "CONGRATULATIONS, MAHI! YOU JUST INSTALLED ABSOLUTELY NOTHING.\n\n"
@@ -27,61 +23,6 @@ ROAST_LINES = (
     "potato PC, and go touch some real-life San Andreas grass! \U0001F335\U0001F697\U0001F4A5\n\n"
     "btw, I'm Xtrimlee sorrie. Ekhon exit korte keyboard er ESC press kor"
 )
-
-NOTEPAD_PRANK_DELAY_SECONDS = 4
-NOTEPAD_PRANK_TEXT = "Prank Like A Dev"
-
-
-def _human_type(shell, text):
-    # sends one keystroke at a time with a randomized delay so it reads
-    # like someone actually typing, instead of the whole string appearing
-    # in one instant paste
-    for ch in text:
-        shell.SendKeys(ch)
-        time.sleep(random.uniform(0.09, 0.24))
-        # small chance of a slightly longer pause, like a person
-        # thinking mid-word
-        if random.random() < 0.12:
-            time.sleep(random.uniform(0.15, 0.35))
-
-
-def run_notepad_prank():
-    # best-effort only: skip silently on anything that isn't set up for
-    # it (no pywin32, no notepad on PATH, etc) -- this is a bonus prank
-    # on top of the roast, not something the rest of the program should
-    # ever depend on or crash over
-    try:
-        import win32com.client
-    except ImportError:
-        print("pywin32 not available, skipping notepad prank")
-        return
-
-    notepad_path = shutil.which("notepad") or shutil.which("notepad.exe")
-    if not notepad_path:
-        print("notepad not found on PATH, skipping notepad prank")
-        return
-
-    try:
-        subprocess.Popen([notepad_path])
-    except Exception as e:
-        print("Couldn't launch notepad:", e)
-        return
-
-    shell = win32com.client.Dispatch("WScript.Shell")
-
-    # give notepad a moment to actually open and register its window
-    # before trying to bring it to the foreground
-    time.sleep(1)
-    try:
-        shell.AppActivate("Notepad")
-    except Exception:
-        pass
-    time.sleep(0.3)
-
-    try:
-        _human_type(shell, NOTEPAD_PRANK_TEXT)
-    except Exception as e:
-        print("Notepad typing failed:", e)
 
 
 def extract_audio(video_path):
@@ -165,11 +106,28 @@ def run_player():
         roast_label.place(relx=0.5, rely=0.5, anchor="center")
 
     first_frame = True
+    playback_start = None
 
     def show_frame():
-        nonlocal first_frame
+        nonlocal first_frame, playback_start
         if roasted:
             return
+
+        if playback_start is None:
+            playback_start = time.monotonic()
+
+        # figure out which frame we *should* be on right now based on the
+        # real clock, and skip/drop frames to catch up if rendering has
+        # fallen behind (e.g. CPU contention from the screen recorder) --
+        # without this, a slow frame just pushes every frame after it
+        # later and the whole video visibly plays in slow motion while
+        # the audio (which pygame paces independently) stays on time
+        target_frame_index = int((time.monotonic() - playback_start) * fps)
+        current_frame_index = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+
+        frames_to_skip = target_frame_index - current_frame_index
+        if frames_to_skip > 0:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame_index + frames_to_skip)
 
         ok, frame = cap.read()
         if not ok:
@@ -192,7 +150,9 @@ def run_player():
         video_label.photo = photo  # keep a ref or tkinter will drop the frame
         video_label.configure(image=photo)
 
-        root.after(delay, show_frame)
+        # schedule the next check soon rather than a full frame-delay away,
+        # so we notice quickly if we need to catch up again
+        root.after(max(1, delay // 3), show_frame)
 
     def skip_to_roast():
         if roasted:
@@ -205,10 +165,6 @@ def run_player():
             if roasted:
                 stop_audio()
                 root.destroy()
-                # window is already closed at this point, so a blocking
-                # wait here is fine -- nothing else is left on screen
-                time.sleep(NOTEPAD_PRANK_DELAY_SECONDS)
-                run_notepad_prank()
             # during the intro, Escape does nothing -- only Enter skips ahead
         elif event.keysym == "Return":
             skip_to_roast()
