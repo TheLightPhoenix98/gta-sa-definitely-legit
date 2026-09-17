@@ -10,6 +10,8 @@ import pygame
 from PIL import Image, ImageTk
 from imageio_ffmpeg import get_ffmpeg_exe
 
+from resources import ICON_PATH, VIDEO_PATH
+
 ROAST_LINES = (
     "CONGRATULATIONS, MAHI! YOU JUST INSTALLED ABSOLUTELY NOTHING.\n\n"
     "Free Game Finding Skill: 0/10\n"
