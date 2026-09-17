@@ -321,7 +321,11 @@ class ProgressPage(BasePage):
     def run_step(self):
         if self.pct >= 100:
             self.file_label.config(text="Installation complete.")
-            self.controller.after(700, lambda: self.controller.show_frame("FinishPage"))
+            def _go_finish():
+                if not self.controller.winfo_exists():
+                    return
+                self.controller.show_frame("FinishPage")
+            self.controller.after(700, _go_finish)
             return
 
         step = random.randint(1, 3)
