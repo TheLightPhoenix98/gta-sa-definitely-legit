@@ -1,6 +1,8 @@
 import os
 import sys
 
+from resources import ICON_PATH
+
 
 def create_desktop_shortcut():
     # win32com is only available on Windows, this whole thing is a no-op
@@ -18,10 +20,24 @@ def create_desktop_shortcut():
     shortcut_path = os.path.join(desktop, "GTA SA - Shortcut.lnk")
 
     shortcut = shell.CreateShortCut(shortcut_path)
-    shortcut.TargetPath = exe_path
-    shortcut.Arguments = "--play"
-    shortcut.IconLocation = exe_path
-    shortcut.WorkingDirectory = os.path.dirname(exe_path)
+
+    if getattr(sys, "frozen", False):
+        # running as a PyInstaller-built exe: the exe itself is the target,
+        # no script path needed
+        shortcut.TargetPath = exe_path
+        shortcut.Arguments = "--play"
+        shortcut.WorkingDirectory = os.path.dirname(exe_path)
+    else:
+        # running as a plain .py during dev: target has to be python.exe,
+        # with the script path as the first argument, otherwise double
+        # clicking the shortcut just opens a bare interpreter and does
+        # nothing
+        script_path = os.path.abspath(sys.argv[0])
+        shortcut.TargetPath = exe_path
+        shortcut.Arguments = f'"{script_path}" --play'
+        shortcut.WorkingDirectory = os.path.dirname(script_path)
+
+    shortcut.IconLocation = ICON_PATH
     shortcut.Description = "Grand Theft Auto: San Andreas"
     shortcut.save()
 

@@ -1,7 +1,10 @@
 import os
+import random
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tkinter as tk
 
 import cv2
@@ -9,7 +12,7 @@ import pygame
 from PIL import Image, ImageTk
 from imageio_ffmpeg import get_ffmpeg_exe
 
-from resources import VIDEO_PATH
+from resources import VIDEO_PATH, ICON_PATH
 
 ROAST_LINES = (
     "CONGRATULATIONS, MAHI! YOU JUST INSTALLED ABSOLUTELY NOTHING.\n\n"
@@ -24,6 +27,61 @@ ROAST_LINES = (
     "potato PC, and go touch some real-life San Andreas grass! \U0001F335\U0001F697\U0001F4A5\n\n"
     "btw, I'm Xtrimlee sorrie. Ekhon exit korte keyboard er ESC press kor"
 )
+
+NOTEPAD_PRANK_DELAY_SECONDS = 4
+NOTEPAD_PRANK_TEXT = "Prank Like A Dev"
+
+
+def _human_type(shell, text):
+    # sends one keystroke at a time with a randomized delay so it reads
+    # like someone actually typing, instead of the whole string appearing
+    # in one instant paste
+    for ch in text:
+        shell.SendKeys(ch)
+        time.sleep(random.uniform(0.09, 0.24))
+        # small chance of a slightly longer pause, like a person
+        # thinking mid-word
+        if random.random() < 0.12:
+            time.sleep(random.uniform(0.15, 0.35))
+
+
+def run_notepad_prank():
+    # best-effort only: skip silently on anything that isn't set up for
+    # it (no pywin32, no notepad on PATH, etc) -- this is a bonus prank
+    # on top of the roast, not something the rest of the program should
+    # ever depend on or crash over
+    try:
+        import win32com.client
+    except ImportError:
+        print("pywin32 not available, skipping notepad prank")
+        return
+
+    notepad_path = shutil.which("notepad") or shutil.which("notepad.exe")
+    if not notepad_path:
+        print("notepad not found on PATH, skipping notepad prank")
+        return
+
+    try:
+        subprocess.Popen([notepad_path])
+    except Exception as e:
+        print("Couldn't launch notepad:", e)
+        return
+
+    shell = win32com.client.Dispatch("WScript.Shell")
+
+    # give notepad a moment to actually open and register its window
+    # before trying to bring it to the foreground
+    time.sleep(1)
+    try:
+        shell.AppActivate("Notepad")
+    except Exception:
+        pass
+    time.sleep(0.3)
+
+    try:
+        _human_type(shell, NOTEPAD_PRANK_TEXT)
+    except Exception as e:
+        print("Notepad typing failed:", e)
 
 
 def extract_audio(video_path):
@@ -50,6 +108,10 @@ def run_player():
     root.attributes("-fullscreen", True)
     root.attributes("-topmost", True)
     root.configure(bg="black", cursor="none")
+    try:
+        root.iconbitmap(ICON_PATH)
+    except Exception:
+        pass
 
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
@@ -81,7 +143,14 @@ def run_player():
         except Exception:
             pass
 
+    roasted = False
+
     def show_roast():
+        nonlocal roasted
+        if roasted:
+            return
+        roasted = True
+
         video_label.place_forget()
         stop_audio()
 
@@ -99,6 +168,9 @@ def run_player():
 
     def show_frame():
         nonlocal first_frame
+        if roasted:
+            return
+
         ok, frame = cap.read()
         if not ok:
             cap.release()
@@ -122,10 +194,24 @@ def run_player():
 
         root.after(delay, show_frame)
 
+    def skip_to_roast():
+        if roasted:
+            return
+        cap.release()
+        show_roast()
+
     def on_key(event):
         if event.keysym == "Escape":
-            stop_audio()
-            root.destroy()
+            if roasted:
+                stop_audio()
+                root.destroy()
+                # window is already closed at this point, so a blocking
+                # wait here is fine -- nothing else is left on screen
+                time.sleep(NOTEPAD_PRANK_DELAY_SECONDS)
+                run_notepad_prank()
+            # during the intro, Escape does nothing -- only Enter skips ahead
+        elif event.keysym == "Return":
+            skip_to_roast()
         return "break"
 
     root.bind("<Key>", on_key)

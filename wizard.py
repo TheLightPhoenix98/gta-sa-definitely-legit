@@ -128,14 +128,20 @@ class BasePage(tk.Frame):
         self.nav = tk.Frame(self, bg=BG_PANEL, height=48)
         self.nav.place(x=170, y=WINDOW_H - 48, width=WINDOW_W - 170, height=48)
 
-        self.back_btn = tk.Button(self.nav, text="< Back", width=10, command=self.go_back)
-        self.back_btn.place(x=WINDOW_W - 170 - 260, y=8)
-
-        self.next_btn = tk.Button(self.nav, text="Next >", width=10, command=self.go_next)
-        self.next_btn.place(x=WINDOW_W - 170 - 150, y=8)
+        # positions are relative to the nav frame, whose width is
+        # (WINDOW_W - 170) -- not WINDOW_W. All three buttons + their
+        # margins/gaps must fit inside that width or they clip off the
+        # window's right edge.
+        NAV_W = WINDOW_W - 170
 
         self.cancel_btn = tk.Button(self.nav, text="Cancel", width=10, command=controller.destroy)
-        self.cancel_btn.place(x=WINDOW_W - 170 - 40, y=8)
+        self.cancel_btn.place(x=NAV_W - 100, y=8)
+
+        self.next_btn = tk.Button(self.nav, text="Next >", width=10, command=self.go_next)
+        self.next_btn.place(x=NAV_W - 214, y=8)
+
+        self.back_btn = tk.Button(self.nav, text="< Back", width=10, command=self.go_back)
+        self.back_btn.place(x=NAV_W - 304, y=8)
 
     def go_back(self):
         pass
@@ -318,15 +324,17 @@ class ProgressPage(BasePage):
             self.controller.after(700, lambda: self.controller.show_frame("FinishPage"))
             return
 
-        step = random.randint(3, 9)
+        step = random.randint(1, 3)
         self.pct = min(100, self.pct + step)
         self.progress["value"] = self.pct
 
         fake_file = random.choice(FAKE_FILES)
         self.file_label.config(text=f"Copying: {fake_file}")
 
-        # random small delay so it doesn't look suspiciously linear
-        delay = random.randint(80, 260)
+        # random delay so it doesn't look suspiciously linear -- tuned so
+        # the whole bar takes ~15-17s total, which reads as plausible for
+        # a "4.7GB install" instead of finishing in a blink
+        delay = random.randint(200, 450)
         self.controller.after(delay, self.run_step)
 
 
